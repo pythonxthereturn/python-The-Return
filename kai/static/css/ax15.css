@@ -1,0 +1,138 @@
+/* 全局重置 + 电脑端基础设置 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+html, body {
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    font-family: "Microsoft Yahei", sans-serif;
+}
+
+/* 主容器 - 电脑端全屏铺满 */
+.activity-post-container {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+    contain: layout paint size;
+}
+
+/* 左侧列表（电脑端更适合35%宽度） */
+.activity-left-list {
+    width: 35%;
+    height: 100%;
+    background: #f5f7fa;
+    border-right: 1px solid #e4e7ed;
+    overflow: hidden;
+}
+.activity-scroll-area {
+    height: 100%;
+    padding: 16px;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    /* 优化电脑端滚动条 */
+    scrollbar-width: thin;
+    scrollbar-color: #c0c4cc #f5f7fa;
+}
+/* 自定义滚动条样式 */
+.activity-scroll-area::-webkit-scrollbar {
+    width: 6px;
+}
+.activity-scroll-area::-webkit-scrollbar-track {
+    background: #f5f7fa;
+}
+.activity-scroll-area::-webkit-scrollbar-thumb {
+    background: #c0c4cc;
+    border-radius: 3px;
+}
+
+/* 扁长卡片 - 电脑端更舒适的尺寸 */
+.activity-card {
+    height: 70px;
+    margin-bottom: 12px;
+    padding: 0 20px;
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+}
+.activity-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: #dcdfe6;
+}
+.activity-card.active {
+    background: #ecf5ff;
+    border-color: #b3d8ff;
+}
+.activity-card h3 {
+    font-size: 16px;
+    color: #303133;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 右侧详情面板（电脑端更适合65%宽度） */
+.activity-right-panel {
+    width: 65%;
+    height: 100%;
+    padding: 32px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+.panel-title {
+    font-size: 20px;
+    color: #303133;
+    border-bottom: 1px solid #ebeef5;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+}
+.panel-text {
+    flex: 1;
+    color: #606266;
+    line-height: 1.8;
+    overflow-y: auto;
+    padding-right: 16px;
+    /* 右侧面板也支持独立滚动 */
+    scrollbar-width: thin;
+}
+.panel-text::-webkit-scrollbar {
+    width: 6px;
+}
+.panel-text::-webkit-scrollbar-thumb {
+    background: #e4e7ed;
+    border-radius: 3px;
+}
+.claim-btn {
+    width: 100%;
+    max-width: 300px;
+    align-self: center;
+    padding: 14px;
+    background: #409eff;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 24px;
+}
+.claim-btn:hover {
+    background: #66b1ff;
+}
+.claim-btn:disabled {
+    background: #b3d8ff;
+    cursor: not-allowed;
+}

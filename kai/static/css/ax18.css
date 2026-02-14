@@ -1,0 +1,208 @@
+            /* 彻底禁用整个页面的滚动条 */
+            html, body {
+                overflow: hidden !important; /* 隐藏所有滚动条 */
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                position: fixed !important; /* 防止页面滚动 */
+                font-family: sans-serif;
+            }
+            
+            /* 移除全局重置规则，改为只针对滑动容器内部 */
+            .swipe-vertical-container * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            /* 主容器：左右布局 */
+            .main-container {
+                display: flex;
+                width: 100%;
+                height: 100vh;
+            }
+            
+            /* 左侧：竖向滑动容器 - 修改为50%宽度，与右侧面板各占一半 */
+            .left-panel {
+                width: 50%; /* 改为50%宽度，与右侧面板各占一半 */
+                height: 100%;
+                padding: 20px;
+                box-sizing: border-box; /* 确保内边距不会影响总宽度 */
+            }
+            
+            /* 右侧：上传输入容器 - 修改为50%宽度，与左侧面板各占一半 */
+            .right-panel {
+                width: 50%; /* 改为50%宽度，与左侧面板各占一半 */
+                height: 100%;
+                padding: 20px;
+                background: #f8f9fa;
+                border-left: 1px solid #e0e0e0;
+                box-sizing: border-box; /* 确保内边距不会影响总宽度 */
+            }
+            
+            /* 竖向滚动容器：重力滑动+上下间距核心，必须设固定高度！ */
+            .swipe-vertical-container {
+                width: 100%; /* 占满屏幕宽度，可改固定值如375px */
+                height: 100%; /* 改为100%高度 */
+                display: flex;
+                flex-direction: column; /* 竖向排列，核心 */
+                flex-wrap: nowrap !important;
+                overflow-y: auto !important; /* 竖向滚动，核心 */
+                -webkit-overflow-scrolling: touch !important; /* 移动端重力滑动关键，物理感拉满 */
+                scroll-snap-type: y mandatory !important; /* 竖向滑动吸附，跟手 */
+                gap: 12px !important; /* 图片上下间距，可修改数值 */
+                padding: 0 2px !important;
+                border: 0 !important;
+                margin: 0 !important;
+            }
+            /* 隐藏竖向滚动条（不影响滑动，可选删） */
+            .swipe-vertical-container::-webkit-scrollbar {
+                display: none !important;
+            }
+            .swipe-vertical-container {
+                scrollbar-width: none !important;
+            }
+            /* 滑动项：适配扁图，横向撑满 */
+            .swipe-vertical-item {
+                flex: 0 0 auto !important; /* 禁止拉伸/压缩，防变形 */
+                width: 100% !important; /* 横向撑满容器，适配宽长图 */
+                scroll-snap-align: start !important; /* 竖向吸附定位，不能删 */
+                margin: 0 !important;
+                padding: 0 !important;
+                display: flex !important; /* 添加flex布局 */
+                justify-content: flex-start !important; /* 将内容对齐到右侧 */
+            }
+            /* 扁图样式：宽长、高小，适配你的图片，防变形 */
+            .swipe-vertical-item img {
+                width: 120% !important; /* 横向撑满，利用图片宽长特性 */
+                height: 200px !important; /* 图片高度，可改！贴合你的扁图高小需求 */
+                object-fit: cover !important; /* 裁剪居中，不压扁不拉伸 */
+                border-radius: 8px !important; /* 圆角，可选删/改数值 */
+                display: block !important; /* 消除图片底部默认留白 */
+                cursor: pointer !important; /* 添加手型指针 */
+                transition: transform 0.2s ease !important; /* 添加过渡效果 */
+                margin-left: 0 !important; /* 改为0，让图片靠左对齐 */
+            }
+            /* 图片悬停效果 */
+            .swipe-vertical-item img:hover {
+                transform: scale(1.02) !important; /* 轻微放大效果 */
+            }
+            /* 图片点击效果 */
+            .swipe-vertical-item img:active {
+                transform: scale(0.98) !important; /* 点击时轻微缩小 */
+            }
+            
+            /* 上传输入布局样式 */
+            .upload-box {
+                width: 100%;
+                height: 200px;
+                font-size: 18px;
+                border: 2px dashed #ccc;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                color: #666;
+                transition: all 0.3s;
+                background: #f9f9f9;
+                margin-bottom: 20px;
+                position: relative;
+                user-select: none;
+                pointer-events: auto;
+            }
+            .upload-box:hover {
+                border-color: #409eff;
+                color: #409eff;
+                background: #f0f7ff;
+            }
+            .upload-box input {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                opacity: 0;
+                cursor: pointer;
+            }
+            .upload-content {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                z-index: 1;
+            }
+            .upload-text {
+                margin-bottom: 10px;
+                text-align: center;
+            }
+            .image-preview {
+                max-width: 90%;
+                max-height: 150px;
+                margin-top: 10px;
+                display: none;
+            }
+            .image-preview img {
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+                border-radius: 4px;
+            }
+            .upload-box.has-image .upload-text {
+                display: none;
+            }
+            .upload-box.has-image .image-preview {
+                display: block;
+            }
+            
+            .input-submit-container {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .flat-input {
+                height: 45px;
+                font-size: 16px;
+                width: 100%;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                outline: none;
+                transition: border 0.3s;
+            }
+            .flat-input:focus {
+                border-color: #409eff;
+            }
+            .flat-input2 {
+                height: 300px;
+                font-size: 16px;
+                width: 100%;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                outline: none;
+                transition: border 0.3s;
+            }
+            .flat-input:focus {
+                border-color: #409eff;
+            }
+            .submit-btn {
+                width: 100%;
+                height: 50px;
+                line-height: 50px;
+                font-size: 18px;
+                padding: 0;
+                background: #409eff;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: background 0.3s;
+            }
+            .submit-btn:hover {
+                background: #337ecc;
+            }

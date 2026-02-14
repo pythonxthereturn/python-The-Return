@@ -1,0 +1,55 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+body {
+    background-color: #f5f7fa;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    height: 100vh;
+}
+.card {
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative; /* 为头像绝对定位做容器 */
+    width: 100%;
+    aspect-ratio: 1;
+}
+.text-ellipsis-mult {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.badge-icon {
+    font-size: 10px;
+    font-weight: bold;
+    margin-right: 2px; /* 勾和文字间距 */
+}
+    /* 渐变版（抖音原版视觉） */
+.verified-badge.gradient {
+    background: linear-gradient(90deg, #2596ff, #007fff) !important;
+    box-shadow: 0 1px 2px rgba(0,127,255,0.2) !important;
+    border-radius: 12px !important;
+    padding: 2px 8px !important;
+    font-size: 10px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: white !important;
+    font-weight: 500 !important;
+}
+
+.verified-badge.gradient .badge-text {
+    color: white !important;
+    font-size: 10px !important;
+    margin-left: 2px !important;
+}
+
+.verified-badge:hover {
+    opacity: 0.9;
+    transform: scale(0.98);
+    transition: all 0.2s ease;
+}
