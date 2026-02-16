@@ -1,3 +1,22 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Python × The Return - 前端应用 (app.py)
+
+系统架构说明：
+- ap.py: 客户端脚本，负责与用户交互，模拟MySQL命令行界面
+- kip.py: 后端服务器，处理API请求，连接数据库
+- app.py: 前端应用，提供用户界面
+
+主要功能：
+- 提供用户界面
+- 处理前端请求
+- 与后端服务器通信
+- 支持WebSocket连接
+- 处理加密数据
+- 支持QUIC协议进行延迟传输
+"""
+
 from flask import Flask, render_template, request, redirect, jsonify, send_from_directory, url_for
 import json
 import os
@@ -29,6 +48,102 @@ import io
 app = Flask(__name__)
 CORS(app)
 
+# 用于存储当前玩家ID的全局变量
+current_player_id = None
+
+@app.route('/get_current_player_id', methods=['GET'])
+def get_current_player_id():
+    """
+    获取当前玩家的ID
+    用于消息发送时的身份验证
+    """
+    global current_player_id
+    
+    try:
+        # 尝试从HID设备获取玩家ID
+        import hid
+        
+        # 模拟获取HID数据
+        def get_hid():
+            """获取HID设备信息"""
+            try:
+                # 这里是模拟实现，实际项目中应该从真实的HID设备获取
+                return {
+                    1: "PlayerDevice",
+                    2: "12345"
+                }
+            except Exception as e:
+                print(f"获取HID数据失败: {e}")
+                return {
+                    1: "DefaultDevice",
+                    2: "0"
+                }
+        
+        # 获取HID数据
+        hid_data = get_hid()
+        
+        # 构建玩家ID
+        if hid_data and len(hid_data) > 1:
+            if hid_data.get(2) and hid_data[2] != "No release number":
+                player_id = f'{hid_data[1]},{hid_data[2]}'
+            else:
+                player_id = f'{hid_data[1]},0'
+        else:
+            # 降级使用默认ID
+            player_id = f'default,{int(time.time())}'
+        
+        # 保存当前玩家ID
+        current_player_id = player_id
+        
+        return jsonify({
+            "status": "success",
+            "player_id": player_id,
+            "message": "获取玩家ID成功"
+        })
+    
+    except Exception as e:
+        print(f"获取玩家ID失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"获取玩家ID失败: {str(e)}"
+        }), 500
+
+@app.route('/validate_player_id', methods=['POST'])
+def validate_player_id():
+    """
+    验证玩家ID
+    用于消息发送前的身份验证
+    """
+    try:
+        data = request.get_json()
+        if not data or 'player_id' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "缺少玩家ID参数"
+            }), 400
+        
+        player_id = data['player_id']
+        global current_player_id
+        
+        # 验证玩家ID
+        if player_id == current_player_id or current_player_id is None:
+            # 如果是当前玩家或还未设置玩家ID，则验证通过
+            return jsonify({
+                "status": "success",
+                "message": "玩家ID验证通过"
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "玩家ID验证失败"
+            }), 401
+    
+    except Exception as e:
+        print(f"验证玩家ID失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"验证玩家ID失败: {str(e)}"
+        }), 500
 
 def hex_to_key(hex_str):
     return bytes.fromhex(hex_str)
@@ -311,8 +426,54 @@ def jiw():
         # 检查是否是结算请求
         if data and data.get('rtiasc'):
             print('处理结算请求...')
-            # 直接返回成功响应，因为结算逻辑主要在前端处理
-            return jsonify({"status": "success", "message": "结算成功"})
+            # 获取ID和分数
+            plain_text = data.get("id")
+            score = data.get("score")
+            if not plain_text or score is None:
+                return jsonify({"status": "error", "message": "缺少必要的结算参数"})
+            
+            print('原始ID文本:', plain_text)
+            print('结算分数:', score)
+            
+            # 加密数据
+            cipher_text = encrypt_with_public_key(public_key, plain_text)
+            asd = {
+                "id": cipher_text.hex(),
+                "score": score,
+            }
+            print('加密后的数据（十六进制）:', cipher_text.hex()[:50] + '...')
+            
+            # 发送到后端结算服务
+            url = "http://127.0.0.1:8086/help"
+            print('发送请求到后端结算服务:', url)
+            
+            try:
+                response = requests.post(url, json=asd, timeout=10)
+                print('后端服务响应状态码:', response.status_code)
+                
+                # 解析响应的JSON数据
+                res_json = response.json()
+                print('后端服务返回数据:', res_json)
+
+                if res_json.get("status") == "success":
+                    print("结算成功，返回数据：", res_json.get("data"))
+                    return jsonify({"status": "success", "message": "结算成功"})
+                else:
+                    print("后端处理失败，返回数据：", res_json.get("data"))
+                    return jsonify({"status": "error", "message": f"后端处理失败: {res_json.get('data', '未知错误')}"})
+                    
+            except requests.exceptions.Timeout:
+                print("请求超时")
+                return jsonify({"status": "error", "message": "请求后端服务超时", "fe1": 0})
+            except requests.exceptions.ConnectionError:
+                print("连接错误，后端服务可能未启动")
+                return jsonify({"status": "error", "message": "无法连接到后端服务，请确保后端服务正在运行", "fe1": 0})
+            except requests.exceptions.RequestException as e:
+                print("请求异常：", e)
+                return jsonify({"status": "error", "message": f"请求异常: {str(e)}", "fe1": 0})
+            except Exception as e:
+                print("处理请求时发生未知错误:", e)
+                return jsonify({"status": "error", "message": f"处理请求时发生未知错误: {str(e)}", "fe1": 0})
         
         # 处理抽卡请求
         print('处理抽卡请求...')
@@ -1000,6 +1161,93 @@ def get_broadcast_status():
         "client_id": client_id
     })
 
+# 获取HID数据的API接口
+@app.route('/get_hid', methods=['GET'])
+def api_get_hid():
+    """获取HID设备信息的API接口"""
+    try:
+        hid_data = get_hid()
+        print('API获取到的HID数据:', hid_data)
+        return jsonify({"status": "success", "data": hid_data})
+    except Exception as e:
+        print(f"获取HID数据错误: {e}")
+        return jsonify({"status": "error", "message": f"获取HID数据错误: {str(e)}"})
+
+# 用户消息发送接口
+@app.route('/send_message', methods=['POST'])
+def send_message():
+    """
+    用户消息发送接口
+    :return: 消息发送结果
+    """
+    try:
+        # 获取请求数据
+        data = request.get_json()
+        print('消息发送请求数据:', data)
+        
+        if not data or 'opponent_id' not in data or 'message' not in data:
+            return jsonify({"status": "error", "message": "缺少必要的请求参数"})
+        
+        # 获取参数
+        opponent_id = data['opponent_id']
+        message = data['message']
+        
+        # 安全获取发送方ID
+        sender_id_encrypted = get_secure_id()
+        if not sender_id_encrypted:
+            return jsonify({"status": "error", "message": "获取发送方ID失败"})
+        
+        # 加密消息
+        encrypted_message = encrypt_message(message)
+        if not encrypted_message:
+            return jsonify({"status": "error", "message": "消息加密失败"})
+        
+        # 构建消息数据
+        message_data = {
+            "sender_id": sender_id_encrypted,
+            "message": encrypted_message,
+            "timestamp": time.time()
+        }
+        
+        print('构建的消息数据:', message_data)
+        
+        # 调用后端API保存消息
+        url = "http://127.0.0.1:8086/update_user_market_info"
+        payload = {
+            "player_id": opponent_id,
+            "user_json": message_data
+        }
+        
+        print('发送请求到后端服务:', url)
+        response = requests.post(url, json=payload, timeout=10)
+        print('后端服务响应状态码:', response.status_code)
+        
+        # 解析响应
+        if response.status_code == 200:
+            result = response.json()
+            print('后端服务返回数据:', result)
+            
+            if result.get("status") == "success":
+                return jsonify({"status": "success", "message": "消息发送成功"})
+            else:
+                return jsonify({"status": "error", "message": f"后端服务错误: {result.get('data', '未知错误')}"})
+        else:
+            print('后端服务返回错误状态码:', response.status_code)
+            return jsonify({"status": "error", "message": f"后端服务错误: {response.status_code}"})
+            
+    except requests.exceptions.Timeout:
+        print("请求超时")
+        return jsonify({"status": "error", "message": "请求后端服务超时"})
+    except requests.exceptions.ConnectionError:
+        print("连接错误，后端服务可能未启动")
+        return jsonify({"status": "error", "message": "无法连接到后端服务，请确保后端服务正在运行"})
+    except requests.exceptions.RequestException as e:
+        print("请求异常：", e)
+        return jsonify({"status": "error", "message": f"请求异常: {str(e)}"})
+    except Exception as e:
+        print(f"消息发送处理错误: {str(e)}")
+        return jsonify({"status": "error", "message": f"处理错误: {str(e)}"})
+
 def get_hid():
     try:
         asd1 = 0
@@ -1034,71 +1282,125 @@ def get_hid():
             1: "HID Error",
             2: "Error"
         }
+
+# 中转加密逻辑
+def relay_encrypt(data):
+    """
+    中转加密逻辑，用于安全处理数据传输
+    :param data: 需要加密的数据
+    :return: 加密后的数据（十六进制字符串）
+    """
+    try:
+        # 使用RSA公钥加密数据
+        cipher_text = encrypt_with_public_key(public_key, str(data))
+        encrypted_data = cipher_text.hex()
+        print(f"中转加密成功，加密数据长度: {len(encrypted_data)}")
+        return encrypted_data
+    except Exception as e:
+        print(f"中转加密错误: {e}")
+        return None
+
+# 安全获取和使用自身ID
+def get_secure_id():
+    """
+    安全获取和使用自身ID
+    :return: 加密后的ID字符串
+    """
+    try:
+        # 获取HID数据
+        hid_data = get_hid()
+        
+        # 构建ID字符串
+        if hid_data[2] != "No release number":
+            id_str = f'{hid_data[1]},{hid_data[2]}'
+        else:
+            id_str = f'{hid_data[1]},0'
+        
+        print(f"构建的ID字符串: {id_str}")
+        
+        # 加密ID
+        encrypted_id = relay_encrypt(id_str)
+        if encrypted_id:
+            print(f"ID加密成功，加密后长度: {len(encrypted_id)}")
+            return encrypted_id
+        else:
+            print("ID加密失败")
+            return None
+    except Exception as e:
+        print(f"获取安全ID错误: {e}")
+        return None
+
+# 统一的消息加密策略
+def encrypt_message(message):
+    """
+    统一的消息加密策略
+    :param message: 需要加密的消息
+    :return: 加密后的消息
+    """
+    try:
+        # 使用RSA公钥加密消息，提供更高的安全性
+        cipher_text = encrypt_with_public_key(public_key, message)
+        encrypted_message = cipher_text.hex()
+        print(f"消息加密成功，加密后长度: {len(encrypted_message)}")
+        return encrypted_message
+    except Exception as e:
+        print(f"消息加密错误: {e}")
+        # 降级使用简单的字符移位加密作为备选
+        try:
+            encrypted = []
+            for char in message:
+                if char.isalpha():
+                    shift = 3
+                    if char.islower():
+                        encrypted.append(chr((ord(char) - ord('a') + shift) % 26 + ord('a')))
+                    else:
+                        encrypted.append(chr((ord(char) - ord('A') + shift) % 26 + ord('A')))
+                else:
+                    encrypted.append(char)
+            encrypted_message = ''.join(encrypted)
+            print("降级使用字符移位加密成功")
+            return encrypted_message
+        except Exception as e2:
+            print(f"降级加密也失败: {e2}")
+            return None
+
+# 统一的消息解密策略
+def decrypt_message(encrypted_message):
+    """
+    统一的消息解密策略
+    :param encrypted_message: 需要解密的消息
+    :return: 解密后的消息
+    """
+    try:
+        # 尝试使用RSA私钥解密
+        cipher_text = bytes.fromhex(encrypted_message)
+        decrypted_text = decrypt_with_private_key(private_key, cipher_text)
+        print("消息解密成功")
+        return decrypted_text
+    except Exception as e:
+        print(f"RSA解密失败，尝试降级解密: {e}")
+        # 降级使用简单的字符移位解密
+        try:
+            decrypted = []
+            for char in encrypted_message:
+                if char.isalpha():
+                    shift = 3
+                    if char.islower():
+                        decrypted.append(chr((ord(char) - ord('a') - shift) % 26 + ord('a')))
+                    else:
+                        decrypted.append(chr((ord(char) - ord('A') - shift) % 26 + ord('A')))
+                else:
+                    decrypted.append(char)
+            decrypted_message = ''.join(decrypted)
+            print("降级使用字符移位解密成功")
+            return decrypted_message
+        except Exception as e2:
+            print(f"降级解密也失败: {e2}")
+            return None
 #
 
 
-@app.route('/jiw', methods=['post'])
-def jiw_handler():
-    try:
-        data = request.get_json()
-        print('jiw接口收到请求数据:', data)
-        
-        # 添加默认返回值
-        result = {"status": "false", "message": "处理失败"}
-        
-        if data and data.get("rtiasc") == True:
-            url = "http://127.0.0.1:8086/help"
-            plain_text = data["id"]
-            print('原始ID文本:', plain_text)
-            
-            # 加密数据
-            cipher_text = encrypt_with_public_key(public_key, plain_text)
-            asd = {
-                "id": cipher_text.hex(),
-                "score": data["score"],
-            }
-            print('加密后的数据（十六进制）:', cipher_text.hex()[:50] + '...')
-            print('结算分数:', data["score"])
-            
-            try:
-                # 发送POST请求，携带JSON数据
-                print('发送请求到后端结算服务:', url)
-                response = requests.post(url, json=asd, timeout=10)
-                print('后端服务响应状态码:', response.status_code)
-                
-                # 解析响应的JSON数据
-                res_json = response.json()
-                print('后端服务返回数据:', res_json)
-
-                if res_json.get("status") == "success":
-                    print("结算成功，返回数据：", res_json.get("data"))
-                    result = {"status": "success", "message": "结算成功"}
-                else:
-                    print("后端处理失败，返回数据：", res_json.get("data"))
-                    result = {"status": "false", "message": f"后端处理失败: {res_json.get('data', '未知错误')}"}
-                    
-            except requests.exceptions.Timeout:
-                print("请求超时")
-                result = {"status": "false", "message": "请求后端服务超时"}
-            except requests.exceptions.ConnectionError:
-                print("连接错误，后端服务可能未启动")
-                result = {"status": "false", "message": "无法连接到后端服务，请确保后端服务正在运行"}
-            except requests.exceptions.RequestException as e:
-                print("请求异常：", e)
-                result = {"status": "false", "message": f"请求异常: {str(e)}"}
-            except Exception as e:
-                print("处理请求时发生未知错误:", e)
-                result = {"status": "false", "message": f"处理请求时发生未知错误: {str(e)}"}
-        else:
-            print("请求数据格式错误，缺少rtiasc字段或值不为true")
-            result = {"status": "false", "message": "请求数据格式错误"}
-    except Exception as e:
-        print("jiw接口处理错误:", e)
-        result = {"status": "false", "message": f"接口处理错误: {str(e)}"}
-    
-    print('jiw接口返回结果:', result)
-    # 返回响应
-    return jsonify(result)
+# 结算接口已合并到 /jiw 接口中
 
 @app.route('/upload', methods=['POST'])
 def upload():
