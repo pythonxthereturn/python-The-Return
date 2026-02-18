@@ -21,6 +21,9 @@ from flask import Flask, render_template, request, redirect, jsonify, send_from_
 import json
 import os
 from flask_compress import Compress
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+import time
 from flask_cors import CORS
 import socket
 import hid
@@ -45,6 +48,57 @@ import uuid
 import traceback            
 from PIL import Image
 import io
+
+# 对称加密配置
+ENCRYPTION_KEY = bytes.fromhex('00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff')  # 固定256位密钥
+
+# 对称加密函数
+def encrypt_data(data: str) -> str:
+    """使用AES-256-GCM加密数据"""
+    iv = os.urandom(12)  # 12字节IV
+    encryptor = Cipher(
+        algorithms.AES(ENCRYPTION_KEY),
+        modes.GCM(iv),
+        backend=default_backend()
+    ).encryptor()
+    
+    ciphertext = encryptor.update(data.encode('utf-8')) + encryptor.finalize()
+    tag = encryptor.tag
+    
+    # 返回IV + 密文 + 标签的十六进制表示
+    return (iv + ciphertext + tag).hex()
+
+# 对称解密函数
+def decrypt_data(encrypted_data: str) -> str:
+    """使用AES-256-GCM解密数据"""
+    try:
+        data = bytes.fromhex(encrypted_data)
+        iv = data[:12]
+        ciphertext = data[12:-16]
+        tag = data[-16:]
+        
+        decryptor = Cipher(
+            algorithms.AES(ENCRYPTION_KEY),
+            modes.GCM(iv, tag),
+            backend=default_backend()
+        ).decryptor()
+        
+        plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+        return plaintext.decode('utf-8')
+    except Exception as e:
+        print(f"解密失败: {e}")
+        raise
+
+# 当前玩家数据暂存（仅存储当前实例所属玩家的信息）
+current_player_data = {
+    'raw_id': None,
+    'encrypted_id': None,
+    'queue_id': None,
+    'matching_status': 'idle',  # idle, waiting, matched, failed
+    'match_result': None,
+    'last_update_time': None
+}
+
 app = Flask(__name__)
 CORS(app)
 
@@ -394,7 +448,15 @@ def a11():
 @app.route('/a12')
 def a12():
     return render_template('a12.html')
-
+@app.route('/a13')
+def a13():
+    return render_template('a13.html')
+@app.route('/a14')
+def a14():
+    return render_template('a14.html')
+@app.route('/a15')
+def a15():
+    return render_template('a15.html')
 
 @app.route('/static/<path:filename>')
 def serve_static(filename):
@@ -1659,6 +1721,270 @@ def diplayer_upload():
 
 
 
+@app.route('/dai1', methods=['POST'])
+def dai1():
+    try:
+        data = request.get_json()
+        print('dai1接口收到请求数据:', data)
+        
+        # 校验请求参数合法性
+        if not data or 'player_raw_id' not in data or 'request_type' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "缺少必要的请求参数",
+                "fe1": 0
+            }), 400
+        
+        # 提取玩家原始ID
+        player_raw_id = data['player_raw_id']
+        request_type = data['request_type']
+        
+        print('提取的玩家原始ID:', player_raw_id)
+        print('请求类型:', request_type)
+        
+        # 对玩家原始ID进行对称加密
+        encrypted_id = encrypt_data(player_raw_id)
+        print('对称加密后的数据（十六进制前50位）:', encrypted_id[:50] + '...')
+        
+        # 生成队列ID
+        queue_id = f'queue_{int(time.time())}_{random.randint(1000, 9999)}'
+        
+        # 更新当前玩家数据
+        global current_player_data
+        current_player_data.update({
+            'raw_id': player_raw_id,
+            'encrypted_id': encrypted_id,
+            'queue_id': queue_id,
+            'matching_status': 'waiting',
+            'last_update_time': time.time()
+        })
+        
+        print('更新后的当前玩家数据:', current_player_data)
+        
+        # 发送到KIP后端服务
+        url = "http://127.0.0.1:8086/dai2"
+        payload = {
+            "id": encrypted_id,
+            "request_type": request_type,
+            "queue_id": queue_id
+        }
+        
+        print('发送请求到KIP后端服务:', url)
+        print('发送的数据:', payload)
+        
+        response = requests.post(url, json=payload, timeout=10)
+        print('KIP后端服务响应状态码:', response.status_code)
+        
+        # 解析响应
+        if response.status_code == 200:
+            result = response.json()
+            print('KIP后端服务返回数据:', result)
+            
+            # 处理返回结果
+            if result.get('status') == 'matched':
+                # 匹配成功，更新状态
+                current_player_data['matching_status'] = 'matched'
+                current_player_data['match_result'] = result
+                return jsonify(result)
+            elif result.get('status') == 'waiting':
+                # 等待中，返回等待状态，前端会继续轮询
+                return jsonify({
+                    "status": "waiting",
+                    "queueId": queue_id,
+                    "message": "正在匹配中，请稍候..."
+                })
+            else:
+                # 其他状态，返回错误
+                return jsonify({
+                    "status": "error",
+                    "message": f"KIP后端服务错误: {result.get('message', '未知错误')}",
+                    "fe1": 0
+                })
+        else:
+            print('KIP后端服务返回错误状态码:', response.status_code)
+            try:
+                # 尝试获取后端服务的错误信息
+                error_result = response.json()
+                return jsonify({
+                    "status": "error", 
+                    "message": f"后端服务错误: {error_result.get('data', error_result.get('message', '未知错误'))}",
+                    "fe1": 0
+                })
+            except:
+                return jsonify({
+                    "status": "error", 
+                    "message": f"后端服务错误: {response.status_code}",
+                    "fe1": 0
+                })
+            
+    except requests.exceptions.Timeout:
+        print("请求超时")
+        return jsonify({"status": "error", "message": "请求后端服务超时", "fe1": 0})
+    except requests.exceptions.ConnectionError:
+        print("连接错误，后端服务可能未启动")
+        return jsonify({"status": "error", "message": "无法连接到后端服务，请确保后端服务正在运行", "fe1": 0})
+    except requests.exceptions.RequestException as e:
+        print("请求异常：", e)
+        return jsonify({"status": "error", "message": f"请求异常: {str(e)}", "fe1": 0})
+    except Exception as e:
+        print("处理请求时发生未知错误:", e)
+        return jsonify({"status": "error", "message": f"处理请求时发生未知错误: {str(e)}", "fe1": 0})   
+
+@app.route('/dai1/status', methods=['POST'])
+def dai1_status():
+    """
+    查询匹配状态接口
+    用于前端轮询查询匹配结果
+    """
+    try:
+        data = request.get_json()
+        print('dai1/status接口收到请求数据:', data)
+        
+        # 校验请求参数
+        if not data or 'queueId' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "缺少队列ID参数",
+                "fe1": 0
+            }), 400
+        
+        queue_id = data['queueId']
+        print('查询的队列ID:', queue_id)
+        
+        # 检查当前玩家数据
+        global current_player_data
+        if not current_player_data or 'queue_id' not in current_player_data:
+            return jsonify({
+                "status": "error",
+                "message": "玩家数据未初始化",
+                "fe1": 0
+            }), 400
+        
+        if current_player_data['queue_id'] != queue_id:
+            return jsonify({
+                "status": "error",
+                "message": "队列ID不匹配",
+                "fe1": 0
+            }), 400
+        
+        # 检查是否已匹配成功
+        if current_player_data.get('matching_status') == 'matched' and current_player_data.get('match_result'):
+            print('返回匹配成功结果:', current_player_data['match_result'])
+            return jsonify(current_player_data['match_result'])
+        
+        # 如果仍在等待，向KIP后端查询最新状态
+        if current_player_data.get('matching_status') == 'waiting':
+            url = "http://127.0.0.1:8086/dai2/status"
+            payload = {
+                "queue_id": queue_id,
+                "id": current_player_data.get('encrypted_id', '')
+            }
+            
+            print('向KIP后端查询最新匹配状态:', url)
+            print('查询数据:', payload)
+            
+            try:
+                response = requests.post(url, json=payload, timeout=10)
+                print('KIP后端状态查询响应状态码:', response.status_code)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    print('KIP后端状态查询返回数据:', result)
+                    
+                    # 更新状态
+                    if result.get('status') == 'matched':
+                        current_player_data['matching_status'] = 'matched'
+                        current_player_data['match_result'] = result
+                    
+                    return jsonify(result)
+                else:
+                    # 如果查询失败，返回等待状态
+                    return jsonify({
+                        "status": "waiting",
+                        "queueId": queue_id,
+                        "message": "正在匹配中，请稍候..."
+                    })
+            except requests.exceptions.RequestException as e:
+                print("状态查询请求异常：", e)
+                # 请求异常时返回等待状态，前端会继续轮询
+                return jsonify({
+                    "status": "waiting",
+                    "queueId": queue_id,
+                    "message": "网络异常，正在重试..."
+                })
+        
+        # 其他状态
+        return jsonify({
+            "status": current_player_data.get('matching_status', 'waiting'),
+            "queueId": queue_id,
+            "message": "匹配进行中..."
+        })
+        
+    except Exception as e:
+        print("处理状态查询时发生未知错误:", e)
+        return jsonify({
+            "status": "error",
+            "message": f"处理状态查询时发生未知错误: {str(e)}",
+            "fe1": 0
+        }), 500
+#
+
+@app.route('/hs1', methods=['POST'])
+def hs1():
+    print('处理结算请求...')
+    data = request.get_json()
+    # 获取ID和分数
+    plain_text = data.get("id")
+    score = data.get("score")
+    if not plain_text or score is None:
+        return jsonify({"status": "error", "message": "缺少必要的结算参数"})
+
+    print('原始ID文本:', plain_text)
+    print('结算分数:', score)
+    print('匹配结果:', data.get("ur"))
+        
+    # 加密数据
+    cipher_text = encrypt_with_public_key(public_key, plain_text)
+    asd = {
+        "id": cipher_text.hex(),
+        "score": score,
+        "ur": data.get("ur"),
+    }
+    print('加密后的数据（十六进制）:', cipher_text.hex()[:50] + '...')
+        
+    # 发送到后端结算服务
+    url = "http://127.0.0.1:8086/help_me"
+    print('发送请求到后端结算服务:', url)
+        
+    try:
+        response = requests.post(url, json=asd, timeout=10)
+        print('后端服务响应状态码:', response.status_code)
+        
+        # 解析响应的JSON数据
+        res_json = response.json()
+        print('后端服务返回数据:', res_json)
+
+        if res_json.get("status") == "success":
+            print("结算成功，返回数据：", res_json.get("data"))
+            return jsonify({"status": "success", "message": "结算成功"})
+        else:
+            print("后端处理失败，返回数据：", res_json.get("data"))
+            return jsonify({"status": "error", "message": f"后端处理失败: {res_json.get('data', '未知错误')}"})
+            
+    except requests.exceptions.Timeout:
+        print("请求超时")
+        return jsonify({"status": "error", "message": "请求后端服务超时", "fe1": 0})
+    except requests.exceptions.ConnectionError:
+        print("连接错误，后端服务可能未启动")
+        return jsonify({"status": "error", "message": "无法连接到后端服务，请确保后端服务正在运行", "fe1": 0})
+    except requests.exceptions.RequestException as e:
+        print("请求异常：", e)
+        return jsonify({"status": "error", "message": f"请求异常: {str(e)}", "fe1": 0})
+    except Exception as e:
+        print("处理请求时发生未知错误:", e)
+        return jsonify({"status": "error", "message": f"处理请求时发生未知错误: {str(e)}", "fe1": 0})
+
+
 
 
 
@@ -1697,5 +2023,5 @@ if __name__ == '__main__':
     app.run(
         host='127.0.0.1',
         port=8080,
-        debug=True,
+        debug=True
     )
