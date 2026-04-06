@@ -1,0 +1,19 @@
+#axh2 {
+  position: absolute;
+  transform: translate(500px, -1640px); /* 使用transform替代top/left */
+  padding: 8px 16px;
+  font-size: 14px;
+  background: #34a853;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 20; /* 明确设置层级，与axh1相同 */
+}
+#ipv6 {
+  position: absolute;
+  transform: translate(560px, -1640px); /* 使用transform替代复杂定位 */
+  font-size: 18px;
+  color: #333;
+  z-index: 10; /* 确保文本在合适层级 */
+}

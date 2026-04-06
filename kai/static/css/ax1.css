@@ -1,0 +1,11 @@
+body {
+    background-color: #ffffff;
+    margin: 10px;
+}
+.box-1 {
+    width: 1900px;
+    height: 50px;
+    background-color: #f8fdfd5b;
+    border-radius: 12px;
+    box-shadow: 0 0 8px rgba(46, 44, 44, 0.781);
+}
